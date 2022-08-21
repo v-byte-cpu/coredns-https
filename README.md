@@ -8,6 +8,18 @@ External CoreDNS plugins can be enabled in one of two ways:
   1. [Build with compile-time configuration file](https://coredns.io/2017/07/25/compile-time-enabling-or-disabling-plugins/#build-with-compile-time-configuration-file)
   2. [Build with external golang source code](https://coredns.io/2017/07/25/compile-time-enabling-or-disabling-plugins/#build-with-external-golang-source-code)
 
+Method #1 can be quickly described using a sequence of the following commands:
+
+```
+git clone --depth 1 https://github.com/coredns/coredns.git
+cd coredns
+go get github.com/v-byte-cpu/coredns-https
+echo "https:github.com/v-byte-cpu/coredns-https" >> plugin.cfg
+go generate
+go mod tidy -compat=1.17
+go build
+```
+
 ## Syntax
 
 In its most basic form:
