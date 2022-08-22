@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"strings"
@@ -70,7 +69,7 @@ func TestDNSClient(t *testing.T) {
 		require.Equal(t, []byte("abc"), buf, "invalid request body")
 
 		resp = &http.Response{
-			Body:       ioutil.NopCloser(bytes.NewReader(packMsg(t, expectedMsg))),
+			Body:       io.NopCloser(bytes.NewReader(packMsg(t, expectedMsg))),
 			StatusCode: http.StatusOK,
 		}
 		return
@@ -101,7 +100,7 @@ func TestDNSClientHttpClientError(t *testing.T) {
 	httpClient := mockHTTPClientFunc(func(req *http.Request) (resp *http.Response, err error) {
 		err = errors.New("http error")
 		resp = &http.Response{
-			Body:       ioutil.NopCloser(bytes.NewReader(packMsg(t, newExpectedDNSMsg()))),
+			Body:       io.NopCloser(bytes.NewReader(packMsg(t, newExpectedDNSMsg()))),
 			StatusCode: http.StatusOK,
 		}
 		return
@@ -115,7 +114,7 @@ func TestDNSClientHttpClientError(t *testing.T) {
 func TestDNSClientHttpStatusError(t *testing.T) {
 	httpClient := mockHTTPClientFunc(func(req *http.Request) (resp *http.Response, err error) {
 		resp = &http.Response{
-			Body:       ioutil.NopCloser(bytes.NewReader(packMsg(t, newExpectedDNSMsg()))),
+			Body:       io.NopCloser(bytes.NewReader(packMsg(t, newExpectedDNSMsg()))),
 			StatusCode: http.StatusInternalServerError,
 		}
 		return
@@ -147,7 +146,7 @@ func TestDNSClientResponseReadError(t *testing.T) {
 			err:      errors.New("io error"),
 		}
 		resp = &http.Response{
-			Body:       ioutil.NopCloser(reader),
+			Body:       io.NopCloser(reader),
 			StatusCode: http.StatusOK,
 		}
 		return
@@ -161,7 +160,7 @@ func TestDNSClientResponseReadError(t *testing.T) {
 func TestDNSClientMsgUnpackError(t *testing.T) {
 	httpClient := mockHTTPClientFunc(func(req *http.Request) (resp *http.Response, err error) {
 		resp = &http.Response{
-			Body:       ioutil.NopCloser(strings.NewReader("def")),
+			Body:       io.NopCloser(strings.NewReader("def")),
 			StatusCode: http.StatusOK,
 		}
 		return
@@ -173,7 +172,7 @@ func TestDNSClientMsgUnpackError(t *testing.T) {
 }
 
 func TestDNSClientLargeResponseError(t *testing.T) {
-	//create large buffer with the correct DNS message at the beginning
+	// create large buffer with the correct DNS message at the beginning
 	var buf bytes.Buffer
 	dnsMsg := packMsg(t, newExpectedDNSMsg())
 	buf.Write(dnsMsg)
@@ -181,7 +180,7 @@ func TestDNSClientLargeResponseError(t *testing.T) {
 
 	httpClient := mockHTTPClientFunc(func(req *http.Request) (resp *http.Response, err error) {
 		resp = &http.Response{
-			Body:       ioutil.NopCloser(&buf),
+			Body:       io.NopCloser(&buf),
 			StatusCode: http.StatusOK,
 		}
 		return
@@ -289,6 +288,7 @@ func TestLoadBalanceDNSClientMaxFails(t *testing.T) {
 
 			lbClient := newLoadBalanceDNSClient(clients,
 				withLbPolicy(newSequentialPolicy()),
+				withLbRequestTimeout(defaultRequestTimeout),
 				withLbMaxFails(tt.maxFails))
 
 			result, err := lbClient.Query(context.Background(), []byte("abc"))
