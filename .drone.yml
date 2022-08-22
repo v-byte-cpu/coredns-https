@@ -1,0 +1,32 @@
+---
+kind: pipeline
+type: docker
+name: coredns-https-ci
+
+trigger:
+  ref:
+    - refs/heads/main
+    - refs/pull/*/head
+    - refs/tags/*
+  event:
+    - push
+    - tag
+    - pull_request
+
+clone:
+  depth: 1
+
+steps:
+  - name: test
+    image: golang:1.19-alpine
+    environment:
+      CGO_ENABLED: "0"
+    volumes:
+      - name: deps
+        path: /go
+    commands:
+      - go test ./... -v -cover
+
+volumes:
+  - name: deps
+    temp: {}
