@@ -31,8 +31,8 @@ func TestRandomPolicy(t *testing.T) {
 			name:    "OneElement",
 			poolLen: 1,
 			expected: [][]int{
-				[]int{0},
-				[]int{0},
+				{0},
+				{0},
 			},
 		},
 		{
@@ -92,27 +92,27 @@ func TestRoundRobinPolicy(t *testing.T) {
 			name:    "OneElement",
 			poolLen: 1,
 			expected: [][]int{
-				[]int{0},
-				[]int{0},
+				{0},
+				{0},
 			},
 		},
 		{
 			name:    "TwoElements",
 			poolLen: 2,
 			expected: [][]int{
-				[]int{0, 1},
-				[]int{1, 0},
-				[]int{0, 1},
+				{0, 1},
+				{1, 0},
+				{0, 1},
 			},
 		},
 		{
 			name:    "ThreeElements",
 			poolLen: 3,
 			expected: [][]int{
-				[]int{0, 1, 2},
-				[]int{1, 2, 0},
-				[]int{2, 0, 1},
-				[]int{0, 1, 2},
+				{0, 1, 2},
+				{1, 2, 0},
+				{2, 0, 1},
+				{0, 1, 2},
 			},
 		},
 	}
@@ -152,24 +152,24 @@ func TestSequentialPolicy(t *testing.T) {
 			name:    "OneElement",
 			poolLen: 1,
 			expected: [][]int{
-				[]int{0},
-				[]int{0},
+				{0},
+				{0},
 			},
 		},
 		{
 			name:    "TwoElements",
 			poolLen: 2,
 			expected: [][]int{
-				[]int{0, 1},
-				[]int{0, 1},
+				{0, 1},
+				{0, 1},
 			},
 		},
 		{
 			name:    "ThreeElements",
 			poolLen: 3,
 			expected: [][]int{
-				[]int{0, 1, 2},
-				[]int{0, 1, 2},
+				{0, 1, 2},
+				{0, 1, 2},
 			},
 		},
 	}

@@ -163,12 +163,15 @@ func withLbMaxFails(maxFails int) lbDNSClientOption {
 func (c *lbDNSClient) Query(ctx context.Context, dnsreq []byte) (r *dns.Msg, err error) {
 	ids := c.p.List(len(c.clients))
 	for i := 0; i < c.maxFails; i++ {
-		ctx, cancel := context.WithTimeout(ctx, c.timeout)
-		defer cancel()
-		if r, err = c.clients[ids[i]].Query(ctx, dnsreq); err == nil {
+		if r, err = c.query(ctx, dnsreq, ids[i]); err == nil {
 			return
 		}
-		cancel()
 	}
 	return
+}
+
+func (c *lbDNSClient) query(ctx context.Context, dnsreq []byte, clientID int) (*dns.Msg, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	return c.clients[clientID].Query(ctx, dnsreq)
 }

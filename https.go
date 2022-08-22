@@ -42,7 +42,7 @@ func newHTTPS(from string, client dnsClient, opts ...httpsOption) *HTTPS {
 var _ plugin.Handler = (*HTTPS)(nil)
 
 // Name implements plugin.Handler.
-func (h *HTTPS) Name() string { return "https" }
+func (*HTTPS) Name() string { return "https" }
 
 // ServeDNS implements plugin.Handler.
 func (h *HTTPS) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (status int, err error) {
