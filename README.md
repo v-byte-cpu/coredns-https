@@ -1,5 +1,9 @@
 # https
 
+[![Build Status](https://cloud.drone.io/api/badges/v-byte-cpu/coredns-https/status.svg)](https://cloud.drone.io/v-byte-cpu/coredns-https)
+[![GoReportCard Status](https://goreportcard.com/badge/github.com/v-byte-cpu/coredns-https)](https://goreportcard.com/report/github.com/v-byte-cpu/coredns-https)
+[![GitHub release](https://img.shields.io/github/v/release/v-byte-cpu/coredns-https)](https://github.com/v-byte-cpu/coredns-https/releases/latest)
+
 **https** is a [CoreDNS](https://github.com/coredns/coredns) plugin that proxies DNS messages to upstream resolvers using DNS-over-HTTPS protocol. See [RFC 8484](https://tools.ietf.org/html/rfc8484).
 
 ## Installation
