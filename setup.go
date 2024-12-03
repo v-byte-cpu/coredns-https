@@ -123,6 +123,7 @@ var parseBlockMap = map[string]parseBlockFunc{
 	"except":         parseExcept,
 	"tls":            parseTLS,
 	"tls_servername": parseTLSServerName,
+	"tls_certstore":  parseTLSCertStore,
 	"policy":         parsePolicy,
 }
 

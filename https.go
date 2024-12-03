@@ -8,9 +8,12 @@ import (
 
 	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/debug"
+	clog "github.com/coredns/coredns/plugin/pkg/log"
 	"github.com/coredns/coredns/request"
 	"github.com/miekg/dns"
 )
+
+var log = clog.NewWithPlugin("https")
 
 // HTTPS represents a plugin instance that can proxy requests to another (DNS) server via DoH protocol.
 // It has a list of proxies each representing one upstream proxy
