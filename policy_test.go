@@ -7,6 +7,8 @@ import (
 )
 
 func TestRandomPolicy(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		poolLen  int
@@ -46,6 +48,8 @@ func TestRandomPolicy(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			r := newRandomPolicy()
 			if tt.poolLen < 2 {
 				for i, expected := range tt.expected {
@@ -54,7 +58,7 @@ func TestRandomPolicy(t *testing.T) {
 				}
 			} else {
 				result := r.List(tt.poolLen)
-				require.Equal(t, tt.poolLen, len(result))
+				require.Len(t, result, tt.poolLen)
 				// verify all elements
 				visited := make([]bool, tt.poolLen)
 				for i := 0; i < tt.poolLen; i++ {
@@ -68,6 +72,8 @@ func TestRandomPolicy(t *testing.T) {
 }
 
 func TestRoundRobinPolicy(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		poolLen  int
@@ -118,6 +124,8 @@ func TestRoundRobinPolicy(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			r := newRoundRobinPolicy()
 			for i, expected := range tt.expected {
 				result := r.List(len(expected))
@@ -128,6 +136,8 @@ func TestRoundRobinPolicy(t *testing.T) {
 }
 
 func TestSequentialPolicy(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		poolLen  int
@@ -175,6 +185,8 @@ func TestSequentialPolicy(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			p := newSequentialPolicy()
 			for i, expected := range tt.expected {
 				result := p.List(len(expected))

@@ -29,6 +29,9 @@ var (
 	errResponseStatus   = errors.New("invalid http response status code")
 )
 
+//go:generate go tool mockgen -destination mocks_internal_test.go -package https -typed . dnsClient,httpRequestDoer
+//go:generate go tool mockgen -destination mocks_dns_test.go -package https -typed github.com/miekg/dns ResponseWriter
+
 // dnsClient is the client API for DNS service
 type dnsClient interface {
 	Query(ctx context.Context, dnsreq []byte) (result *dns.Msg, err error)

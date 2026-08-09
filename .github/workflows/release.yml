@@ -1,0 +1,78 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      NOTES_PATH: ${{ github.workspace }}/release-notes.md
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Validate release tag
+        id: release_flags
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+            echo "invalid release tag: ${RELEASE_TAG}" >&2
+            exit 1
+          fi
+
+          if [[ "${RELEASE_TAG}" =~ -rc\.[0-9]+$ ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "make_latest=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "make_latest=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Install git-cliff
+        uses: taiki-e/install-action@git-cliff
+
+      - name: Generate release notes
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          ignore_rc_tags='^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$'
+          if [[ "${RELEASE_TAG}" =~ -rc\.[0-9]+$ ]]; then
+            git-cliff --current --output "${NOTES_PATH}"
+          else
+            git-cliff --current --ignore-tags "${ignore_rc_tags}" --output "${NOTES_PATH}"
+          fi
+
+          cat "${NOTES_PATH}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create draft GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: ${{ env.NOTES_PATH }}
+          draft: true
+          prerelease: ${{ steps.release_flags.outputs.prerelease }}
+          make_latest: ${{ steps.release_flags.outputs.make_latest }}
