@@ -9,6 +9,7 @@ import (
 	"github.com/coredns/coredns/plugin/test"
 	"github.com/miekg/dns"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func newRequestDNSMsg() *dns.Msg {
@@ -22,49 +23,30 @@ func newRequestDNSMsg() *dns.Msg {
 }
 
 func TestHTTPS(t *testing.T) {
+	t.Parallel()
+
 	dnsMsg := newRequestDNSMsg()
 	dnsdata, err := dnsMsg.Pack()
 	require.NoError(t, err)
-	dnsClient := &mockDNSClient{reqBody: dnsdata, t: t}
+	dnsClient := NewMockdnsClient(gomock.NewController(t))
+	dnsClient.EXPECT().Query(gomock.Any(), dnsdata).Return(newExpectedDNSMsg(), nil)
 	h := newHTTPS(".", dnsClient)
 	rec := dnstest.NewRecorder(&test.ResponseWriter{})
 
 	status, err := h.ServeDNS(context.Background(), rec, dnsMsg)
 	require.NoError(t, err)
 	require.Equal(t, dns.RcodeSuccess, status)
-	require.Equal(t, 1, dnsClient.callCount, "dnsClient call count is wrong")
 	require.Equal(t, newExpectedDNSMsg(), rec.Msg)
 }
 
-type mockDNSClientFunc func(ctx context.Context, dnsreq []byte) (*dns.Msg, error)
-
-func (f mockDNSClientFunc) Query(ctx context.Context, dnsreq []byte) (*dns.Msg, error) {
-	return f(ctx, dnsreq)
-}
-
-type mockDNSResponseWriter struct {
-	dns.ResponseWriter
-	writeFunc func(*dns.Msg) error
-}
-
-func (w *mockDNSResponseWriter) WriteMsg(msg *dns.Msg) error {
-	return w.writeFunc(msg)
-}
-
 func TestHTTPSMsgPackError(t *testing.T) {
+	t.Parallel()
+
 	dnsMsg := &dns.Msg{MsgHdr: dns.MsgHdr{Rcode: 0xFFFFF}}
-	dnsClient := mockDNSClientFunc(func(_ context.Context, _ []byte) (result *dns.Msg, err error) {
-		t.Fatal("dns client must not be called")
-		return
-	})
+	ctrl := gomock.NewController(t)
+	dnsClient := NewMockdnsClient(ctrl)
 	h := newHTTPS(".", dnsClient)
-	w := &mockDNSResponseWriter{
-		ResponseWriter: &test.ResponseWriter{},
-		writeFunc: func(*dns.Msg) (err error) {
-			t.Fatal("dns response writer must not be called")
-			return
-		},
-	}
+	w := NewMockResponseWriter(ctrl)
 
 	status, err := h.ServeDNS(context.Background(), w, dnsMsg)
 	require.Error(t, err)
@@ -72,18 +54,14 @@ func TestHTTPSMsgPackError(t *testing.T) {
 }
 
 func TestHTTPSDNSClientError(t *testing.T) {
+	t.Parallel()
+
 	dnsMsg := newRequestDNSMsg()
-	dnsClient := mockDNSClientFunc(func(_ context.Context, _ []byte) (*dns.Msg, error) {
-		return newExpectedDNSMsg(), errors.New("dns client error")
-	})
+	ctrl := gomock.NewController(t)
+	dnsClient := NewMockdnsClient(ctrl)
+	dnsClient.EXPECT().Query(gomock.Any(), gomock.Any()).Return(newExpectedDNSMsg(), errors.New("dns client error"))
 	h := newHTTPS(".", dnsClient)
-	w := &mockDNSResponseWriter{
-		ResponseWriter: &test.ResponseWriter{},
-		writeFunc: func(*dns.Msg) (err error) {
-			t.Fatal("dns response writer must not be called")
-			return
-		},
-	}
+	w := NewMockResponseWriter(ctrl)
 
 	status, err := h.ServeDNS(context.Background(), w, dnsMsg)
 	require.Error(t, err)
@@ -91,25 +69,26 @@ func TestHTTPSDNSClientError(t *testing.T) {
 }
 
 func TestHTTPSResponseWriterError(t *testing.T) {
+	t.Parallel()
+
 	dnsMsg := newRequestDNSMsg()
-	dnsClient := mockDNSClientFunc(func(_ context.Context, _ []byte) (*dns.Msg, error) {
-		return newExpectedDNSMsg(), nil
-	})
+	ctrl := gomock.NewController(t)
+	dnsClient := NewMockdnsClient(ctrl)
+	dnsClient.EXPECT().Query(gomock.Any(), gomock.Any()).Return(newExpectedDNSMsg(), nil)
 	h := newHTTPS(".", dnsClient)
-	w := &mockDNSResponseWriter{
-		ResponseWriter: &test.ResponseWriter{},
-		writeFunc: func(*dns.Msg) (err error) {
-			return errors.New("response writer error")
-		},
-	}
+	w := NewMockResponseWriter(ctrl)
+	w.EXPECT().WriteMsg(gomock.Any()).Return(errors.New("response writer error"))
 
 	_, err := h.ServeDNS(context.Background(), w, dnsMsg)
 	require.Error(t, err)
 }
 
 func TestHTTPSDNSResponseStateNotMatch(t *testing.T) {
+	t.Parallel()
+
 	dnsMsg := newRequestDNSMsg()
-	dnsClient := mockDNSClientFunc(func(_ context.Context, _ []byte) (*dns.Msg, error) {
+	dnsClient := NewMockdnsClient(gomock.NewController(t))
+	dnsClient.EXPECT().Query(gomock.Any(), gomock.Any()).DoAndReturn(func(context.Context, []byte) (*dns.Msg, error) {
 		result := newExpectedDNSMsg()
 		result.Question[0].Name = "other.domain."
 		return result, nil

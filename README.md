@@ -1,27 +1,67 @@
-# https
+# coredns-https
 
-[![Build Status](https://cloud.drone.io/api/badges/v-byte-cpu/coredns-https/status.svg)](https://cloud.drone.io/v-byte-cpu/coredns-https)
-[![GoReportCard Status](https://goreportcard.com/badge/github.com/v-byte-cpu/coredns-https)](https://goreportcard.com/report/github.com/v-byte-cpu/coredns-https)
+[![CI](https://github.com/v-byte-cpu/coredns-https/actions/workflows/ci.yml/badge.svg)](https://github.com/v-byte-cpu/coredns-https/actions/workflows/ci.yml)
 [![GitHub release](https://img.shields.io/github/v/release/v-byte-cpu/coredns-https)](https://github.com/v-byte-cpu/coredns-https/releases/latest)
 
-**https** is a [CoreDNS](https://github.com/coredns/coredns) plugin that proxies DNS messages to upstream resolvers using DNS-over-HTTPS protocol. See [RFC 8484](https://tools.ietf.org/html/rfc8484).
+**coredns-https** provides the `dohproxy` [CoreDNS](https://github.com/coredns/coredns)
+plugin, which proxies DNS messages to upstream resolvers using DNS-over-HTTPS.
+See [RFC 8484](https://www.rfc-editor.org/rfc/rfc8484.html).
 
 ## Installation
 
-External CoreDNS plugins can be enabled in one of two ways:
-  1. [Build with compile-time configuration file](https://coredns.io/2017/07/25/compile-time-enabling-or-disabling-plugins/#build-with-compile-time-configuration-file)
-  2. [Build with external golang source code](https://coredns.io/2017/07/25/compile-time-enabling-or-disabling-plugins/#build-with-external-golang-source-code)
+The plugin must be compiled into CoreDNS. The following commands build the latest plugin release
+against the tested CoreDNS version:
 
-Method #1 can be quickly described using a sequence of the following commands:
-
-```
-git clone --depth 1 https://github.com/coredns/coredns.git
+```sh
+git clone --depth 1 --branch v1.14.6 https://github.com/coredns/coredns.git
 cd coredns
-go get github.com/v-byte-cpu/coredns-https
-echo "https:github.com/v-byte-cpu/coredns-https" >> plugin.cfg
-go generate
-go mod tidy -compat=1.17
+go get github.com/v-byte-cpu/coredns-https@latest
+COREDNS_PLUGINS="dohproxy:github.com/v-byte-cpu/coredns-https" go generate coredns.go
 go build
+./coredns -plugins | grep -Fx dohproxy
+```
+
+> [!IMPORTANT]
+> The Corefile directive was renamed from `https` to `dohproxy` to avoid a collision with the
+> built-in CoreDNS `https` plugin. Prometheus metrics were also renamed from
+> `coredns_https_*` to `coredns_dohproxy_*`.
+
+## Local development
+
+Run the unit tests first:
+
+```sh
+go test ./...
+```
+
+To test the current checkout in a real CoreDNS binary, clone the tested CoreDNS version into a
+separate directory and replace the module with the absolute path to this repository:
+
+```sh
+git clone --depth 1 --branch v1.14.6 https://github.com/coredns/coredns.git
+cd coredns
+go mod edit -replace github.com/v-byte-cpu/coredns-https=/absolute/path/to/coredns-https
+go get github.com/v-byte-cpu/coredns-https@v0.0.0
+COREDNS_PLUGINS="dohproxy:github.com/v-byte-cpu/coredns-https" go generate coredns.go
+go build
+./coredns -plugins | grep -Fx dohproxy
+```
+
+Create a `Corefile` for a manual end-to-end check:
+
+~~~ corefile
+.:1053 {
+    dohproxy . cloudflare-dns.com/dns-query
+    errors
+    log
+}
+~~~
+
+Start CoreDNS, then query it from another terminal:
+
+```sh
+./coredns -conf Corefile
+dig @127.0.0.1 -p 1053 example.org A
 ```
 
 ## Syntax
@@ -29,7 +69,7 @@ go build
 In its most basic form:
 
 ~~~
-https FROM TO...
+dohproxy FROM TO...
 ~~~
 
 * **FROM** is the base domain to match for the request to be proxied.
@@ -42,7 +82,7 @@ the next upstream in the list is tried.
 Extra knobs are available with an expanded syntax:
 
 ~~~
-https FROM TO... {
+dohproxy FROM TO... {
     except IGNORED_NAMES...
     tls CERT KEY CA
     tls_servername NAME
@@ -68,12 +108,11 @@ https FROM TO... {
 
 ## Metrics
 
-If monitoring is enabled (via the *prometheus* plugin) then the following metric are exported:
+If monitoring is enabled via the *prometheus* plugin, the following metrics are exported:
 
-* `coredns_https_request_duration_seconds{to}` - duration per upstream interaction.
-* `coredns_https_requests_total{to}` - query count per upstream.
-* `coredns_https_responses_total{to, rcode}` - count of RCODEs per upstream.
-  and we are randomly (this always uses the `random` policy) spraying to an upstream.
+* `coredns_dohproxy_request_duration_seconds{to}` - duration per upstream interaction.
+* `coredns_dohproxy_requests_total{to}` - query count per upstream.
+* `coredns_dohproxy_responses_total{to, rcode}` - count of RCODEs per upstream.
 
 ## Examples
 
@@ -81,7 +120,7 @@ Proxy all requests within `example.org.` to a DoH nameserver:
 
 ~~~ corefile
 example.org {
-    https . cloudflare-dns.com/dns-query
+    dohproxy . cloudflare-dns.com/dns-query
 }
 ~~~
 
@@ -89,7 +128,7 @@ Forward everything except requests to `example.org`
 
 ~~~ corefile
 . {
-    https . dns.quad9.net/dns-query {
+    dohproxy . dns.quad9.net/dns-query {
         except example.org
     }
 }
@@ -99,7 +138,7 @@ Load balance all requests between multiple upstreams
 
 ~~~ corefile
 . {
-    https . dns.quad9.net/dns-query cloudflare-dns.com:443/dns-query dns.google/dns-query
+    dohproxy . dns.quad9.net/dns-query cloudflare-dns.com:443/dns-query dns.google/dns-query
 }
 ~~~
 
@@ -107,7 +146,7 @@ Internal DoH server:
 
 ~~~ corefile
 . {
-    https . 10.0.0.10:853/dns-query {
+    dohproxy . 10.0.0.10:853/dns-query {
       tls ca.crt
       tls_servername internal.domain
     }

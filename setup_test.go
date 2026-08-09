@@ -10,6 +10,8 @@ import (
 )
 
 func TestParseConfig(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name           string
 		input          string
@@ -17,7 +19,7 @@ func TestParseConfig(t *testing.T) {
 	}{
 		{
 			name:  "FromAndOneToURL",
-			input: "https . example.com/dns-query",
+			input: "dohproxy . example.com/dns-query",
 			expectedConfig: &httpsConfig{
 				from:   ".",
 				toURLs: []string{"https://example.com/dns-query"},
@@ -25,7 +27,7 @@ func TestParseConfig(t *testing.T) {
 		},
 		{
 			name:  "FromAndTwoToURLs",
-			input: "https . example.com/dns-query example.org/dns-query",
+			input: "dohproxy . example.com/dns-query example.org/dns-query",
 			expectedConfig: &httpsConfig{
 				from:   ".",
 				toURLs: []string{"https://example.com/dns-query", "https://example.org/dns-query"},
@@ -33,7 +35,7 @@ func TestParseConfig(t *testing.T) {
 		},
 		{
 			name:  "ExceptProperty",
-			input: "https . example.com/dns-query {\nexcept domain.com\n}\n",
+			input: "dohproxy . example.com/dns-query {\nexcept domain.com\n}\n",
 			expectedConfig: &httpsConfig{
 				from:   ".",
 				toURLs: []string{"https://example.com/dns-query"},
@@ -42,7 +44,7 @@ func TestParseConfig(t *testing.T) {
 		},
 		{
 			name:  "ExceptPropertyURL",
-			input: "https . example.com/dns-query {\nexcept https://domain.com\n}\n",
+			input: "dohproxy . example.com/dns-query {\nexcept https://domain.com\n}\n",
 			expectedConfig: &httpsConfig{
 				from:   ".",
 				toURLs: []string{"https://example.com/dns-query"},
@@ -51,7 +53,7 @@ func TestParseConfig(t *testing.T) {
 		},
 		{
 			name:  "ExceptPropertyTwoDomains",
-			input: "https . example.com/dns-query {\nexcept domain1.com domain2.com\n}\n",
+			input: "dohproxy . example.com/dns-query {\nexcept domain1.com domain2.com\n}\n",
 			expectedConfig: &httpsConfig{
 				from:   ".",
 				toURLs: []string{"https://example.com/dns-query"},
@@ -60,7 +62,7 @@ func TestParseConfig(t *testing.T) {
 		},
 		{
 			name:  "TLSServerNameProperty",
-			input: "https . 10.1.1.1:853/dns-query {\ntls_servername internal.domain\n}\n",
+			input: "dohproxy . 10.1.1.1:853/dns-query {\ntls_servername internal.domain\n}\n",
 			expectedConfig: &httpsConfig{
 				from:          ".",
 				toURLs:        []string{"https://10.1.1.1:853/dns-query"},
@@ -70,7 +72,7 @@ func TestParseConfig(t *testing.T) {
 		},
 		{
 			name:  "PolicyPropertyRandom",
-			input: "https . example.com/dns-query {\npolicy random\n}\n",
+			input: "dohproxy . example.com/dns-query {\npolicy random\n}\n",
 			expectedConfig: &httpsConfig{
 				from:   ".",
 				toURLs: []string{"https://example.com/dns-query"},
@@ -79,7 +81,7 @@ func TestParseConfig(t *testing.T) {
 		},
 		{
 			name:  "PolicyPropertyRoundRobin",
-			input: "https . example.com/dns-query {\npolicy round_robin\n}\n",
+			input: "dohproxy . example.com/dns-query {\npolicy round_robin\n}\n",
 			expectedConfig: &httpsConfig{
 				from:   ".",
 				toURLs: []string{"https://example.com/dns-query"},
@@ -88,7 +90,7 @@ func TestParseConfig(t *testing.T) {
 		},
 		{
 			name:  "PolicyPropertySequential",
-			input: "https . example.com/dns-query {\npolicy sequential\n}\n",
+			input: "dohproxy . example.com/dns-query {\npolicy sequential\n}\n",
 			expectedConfig: &httpsConfig{
 				from:   ".",
 				toURLs: []string{"https://example.com/dns-query"},
@@ -98,7 +100,9 @@ func TestParseConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := caddy.NewTestController("https", tt.input)
+			t.Parallel()
+
+			c := caddy.NewTestController(pluginName, tt.input)
 			conf, err := parseConfig(c)
 			require.NoError(t, err)
 			require.Equal(t, tt.expectedConfig, conf)
@@ -107,8 +111,10 @@ func TestParseConfig(t *testing.T) {
 }
 
 func TestParseConfigTLSProperty(t *testing.T) {
-	input := "https . example.com/dns-query {\ntls\n}\n"
-	c := caddy.NewTestController("https", input)
+	t.Parallel()
+
+	input := "dohproxy . example.com/dns-query {\ntls\n}\n"
+	c := caddy.NewTestController(pluginName, input)
 	conf, err := parseConfig(c)
 	require.NoError(t, err)
 	require.Equal(t, ".", conf.from)
@@ -117,6 +123,8 @@ func TestParseConfigTLSProperty(t *testing.T) {
 }
 
 func TestParseConfigError(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name  string
 		input string
@@ -127,56 +135,58 @@ func TestParseConfigError(t *testing.T) {
 		},
 		{
 			name:  "EmptyFrom",
-			input: "https",
+			input: "dohproxy",
 		},
 		{
 			name:  "EmptyToURLs",
-			input: "https .",
+			input: "dohproxy .",
 		},
 		{
 			name:  "InvalidToURL",
-			input: "https . abc:&",
+			input: "dohproxy . abc:&",
 		},
 		{
 			name:  "TooManyToURLs",
-			input: "https . " + strings.Repeat("example.com/dns-query ", maxUpstreams+1),
+			input: "dohproxy . " + strings.Repeat("example.com/dns-query ", maxUpstreams+1),
 		},
 		{
 			name:  "UnknownProperty",
-			input: "https . example.com/dns-query {\nabc\n}\n",
+			input: "dohproxy . example.com/dns-query {\nabc\n}\n",
 		},
 		{
 			name:  "ExceptPropertyZeroArgs",
-			input: "https . example.com/dns-query {\nexcept\n}\n",
+			input: "dohproxy . example.com/dns-query {\nexcept\n}\n",
 		},
 		{
 			name:  "TLSPropertyTooManyArgs",
-			input: "https . example.com/dns-query {\ntls abc def ghi qwe\n}\n",
+			input: "dohproxy . example.com/dns-query {\ntls abc def ghi qwe\n}\n",
 		},
 		{
 			name:  "TLSServerNamePropertyZeroArgs",
-			input: "https . example.com/dns-query {\ntls_servername\n}\n",
+			input: "dohproxy . example.com/dns-query {\ntls_servername\n}\n",
 		},
 		{
 			name:  "TLSServerNamePropertyTooManyArgs",
-			input: "https . example.com/dns-query {\ntls_servername abc.com def.com\n}\n",
+			input: "dohproxy . example.com/dns-query {\ntls_servername abc.com def.com\n}\n",
 		},
 		{
 			name:  "PolicyPropertyZeroArgs",
-			input: "https . example.com/dns-query {\npolicy\n}\n",
+			input: "dohproxy . example.com/dns-query {\npolicy\n}\n",
 		},
 		{
 			name:  "PolicyPropertyTooManyArgs",
-			input: "https . example.com/dns-query {\npolicy random round_robin\n}\n",
+			input: "dohproxy . example.com/dns-query {\npolicy random round_robin\n}\n",
 		},
 		{
 			name:  "PolicyPropertyUnknownArg",
-			input: "https . example.com/dns-query {\npolicy abc\n}\n",
+			input: "dohproxy . example.com/dns-query {\npolicy abc\n}\n",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := caddy.NewTestController("https", tt.input)
+			t.Parallel()
+
+			c := caddy.NewTestController(pluginName, tt.input)
 			_, err := parseConfig(c)
 			require.Error(t, err)
 		})

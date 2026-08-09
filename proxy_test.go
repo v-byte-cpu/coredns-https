@@ -12,15 +12,10 @@ import (
 
 	"github.com/miekg/dns"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 const upstreamURL = "https://example.com/dns-query"
-
-type mockHTTPClientFunc func(*http.Request) (*http.Response, error)
-
-func (f mockHTTPClientFunc) Do(req *http.Request) (*http.Response, error) {
-	return f(req)
-}
 
 func newExpectedDNSMsg() *dns.Msg {
 	return &dns.Msg{
@@ -49,10 +44,11 @@ func packMsg(t *testing.T, msg *dns.Msg) []byte {
 }
 
 func TestDNSClient(t *testing.T) {
-	callCount := 0
+	t.Parallel()
+
 	expectedMsg := newExpectedDNSMsg()
-	httpClient := mockHTTPClientFunc(func(req *http.Request) (resp *http.Response, err error) {
-		callCount++
+	httpClient := NewMockhttpRequestDoer(gomock.NewController(t))
+	httpClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (resp *http.Response, err error) {
 		acceptHdrs := req.Header["Accept"]
 		require.NotEmpty(t, acceptHdrs, "Accept header is empty")
 		require.Equal(t, dnsMessageMimeType, acceptHdrs[0], "invalid accept header")
@@ -78,18 +74,16 @@ func TestDNSClient(t *testing.T) {
 
 	result, err := dnsClient.Query(context.Background(), []byte("abc"))
 	require.NoError(t, err)
-	require.Equal(t, 1, callCount, "invalid http client call count")
-	require.True(t, result.MsgHdr.Response)
-	require.Equal(t, len(expectedMsg.Answer), len(result.Answer))
+	require.True(t, result.Response)
+	require.Len(t, result.Answer, len(expectedMsg.Answer))
 	require.Equal(t, expectedMsg.Answer[0].String(), result.Answer[0].String())
 }
 
 func TestDNSClientNewRequestError(t *testing.T) {
+	t.Parallel()
+
 	invalidURL := "https://example.com/\t\n"
-	httpClient := mockHTTPClientFunc(func(req *http.Request) (resp *http.Response, err error) {
-		t.Fatal("http client must not be called")
-		return
-	})
+	httpClient := NewMockhttpRequestDoer(gomock.NewController(t))
 	dnsClient := newDoHDNSClient(httpClient, invalidURL)
 
 	_, err := dnsClient.Query(context.Background(), []byte("abc"))
@@ -97,7 +91,10 @@ func TestDNSClientNewRequestError(t *testing.T) {
 }
 
 func TestDNSClientHttpClientError(t *testing.T) {
-	httpClient := mockHTTPClientFunc(func(req *http.Request) (resp *http.Response, err error) {
+	t.Parallel()
+
+	httpClient := NewMockhttpRequestDoer(gomock.NewController(t))
+	httpClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(*http.Request) (resp *http.Response, err error) {
 		err = errors.New("http error")
 		resp = &http.Response{
 			Body:       io.NopCloser(bytes.NewReader(packMsg(t, newExpectedDNSMsg()))),
@@ -112,7 +109,10 @@ func TestDNSClientHttpClientError(t *testing.T) {
 }
 
 func TestDNSClientHttpStatusError(t *testing.T) {
-	httpClient := mockHTTPClientFunc(func(req *http.Request) (resp *http.Response, err error) {
+	t.Parallel()
+
+	httpClient := NewMockhttpRequestDoer(gomock.NewController(t))
+	httpClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(*http.Request) (resp *http.Response, err error) {
 		resp = &http.Response{
 			Body:       io.NopCloser(bytes.NewReader(packMsg(t, newExpectedDNSMsg()))),
 			StatusCode: http.StatusInternalServerError,
@@ -140,7 +140,10 @@ func (r *errReader) Read(p []byte) (n int, err error) {
 }
 
 func TestDNSClientResponseReadError(t *testing.T) {
-	httpClient := mockHTTPClientFunc(func(req *http.Request) (resp *http.Response, err error) {
+	t.Parallel()
+
+	httpClient := NewMockhttpRequestDoer(gomock.NewController(t))
+	httpClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(*http.Request) (resp *http.Response, err error) {
 		reader := &errReader{
 			delegate: bytes.NewReader(packMsg(t, newExpectedDNSMsg())),
 			err:      errors.New("io error"),
@@ -158,7 +161,10 @@ func TestDNSClientResponseReadError(t *testing.T) {
 }
 
 func TestDNSClientMsgUnpackError(t *testing.T) {
-	httpClient := mockHTTPClientFunc(func(req *http.Request) (resp *http.Response, err error) {
+	t.Parallel()
+
+	httpClient := NewMockhttpRequestDoer(gomock.NewController(t))
+	httpClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(*http.Request) (resp *http.Response, err error) {
 		resp = &http.Response{
 			Body:       io.NopCloser(strings.NewReader("def")),
 			StatusCode: http.StatusOK,
@@ -172,13 +178,16 @@ func TestDNSClientMsgUnpackError(t *testing.T) {
 }
 
 func TestDNSClientLargeResponseError(t *testing.T) {
+	t.Parallel()
+
 	// create large buffer with the correct DNS message at the beginning
 	var buf bytes.Buffer
 	dnsMsg := packMsg(t, newExpectedDNSMsg())
 	buf.Write(dnsMsg)
 	buf.WriteString(strings.Repeat("a", maxDNSMessageSize))
 
-	httpClient := mockHTTPClientFunc(func(req *http.Request) (resp *http.Response, err error) {
+	httpClient := NewMockhttpRequestDoer(gomock.NewController(t))
+	httpClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(*http.Request) (resp *http.Response, err error) {
 		resp = &http.Response{
 			Body:       io.NopCloser(&buf),
 			StatusCode: http.StatusOK,
@@ -191,75 +200,74 @@ func TestDNSClientLargeResponseError(t *testing.T) {
 	require.Error(t, err)
 }
 
-type mockDNSClient struct {
-	callCount int
-	reqBody   []byte
-	t         *testing.T
-	err       error
-}
-
-func (c *mockDNSClient) Query(ctx context.Context, dnsreq []byte) (result *dns.Msg, err error) {
-	c.t.Helper()
-	c.callCount++
-	require.NotNil(c.t, ctx)
-	require.Equal(c.t, c.reqBody, dnsreq, "invalid request body")
-	return newExpectedDNSMsg(), c.err
-}
-
 func TestLoadBalanceDNSClient(t *testing.T) {
-	client1 := &mockDNSClient{reqBody: []byte("abc"), t: t}
+	t.Parallel()
+
+	client1 := NewMockdnsClient(gomock.NewController(t))
+	client1.EXPECT().Query(gomock.Any(), []byte("abc")).Return(newExpectedDNSMsg(), nil)
 	clients := []dnsClient{client1}
 	lbClient := newLoadBalanceDNSClient(clients)
 
 	result, err := lbClient.Query(context.Background(), []byte("abc"))
 	require.NoError(t, err)
-	require.Equal(t, 1, client1.callCount)
 	require.Equal(t, newExpectedDNSMsg(), result)
 }
 
 func TestLoadBalanceDNSClientError(t *testing.T) {
-	client1 := &mockDNSClient{reqBody: []byte("abc"), t: t, err: errors.New("client error")}
+	t.Parallel()
+
+	client1 := NewMockdnsClient(gomock.NewController(t))
+	client1.EXPECT().Query(gomock.Any(), []byte("abc")).Return(newExpectedDNSMsg(), errors.New("client error"))
 	clients := []dnsClient{client1}
 	lbClient := newLoadBalanceDNSClient(clients)
 
 	_, err := lbClient.Query(context.Background(), []byte("abc"))
 	require.Error(t, err)
-	require.Equal(t, 1, client1.callCount)
 }
 
 func TestLoadBalanceDNSClientRetry(t *testing.T) {
-	client1 := &mockDNSClient{reqBody: []byte("abc"), t: t, err: errors.New("client error")}
-	client2 := &mockDNSClient{reqBody: []byte("abc"), t: t}
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client1 := NewMockdnsClient(ctrl)
+	client2 := NewMockdnsClient(ctrl)
+	gomock.InOrder(
+		client1.EXPECT().Query(gomock.Any(), []byte("abc")).Return(newExpectedDNSMsg(), errors.New("client error")),
+		client2.EXPECT().Query(gomock.Any(), []byte("abc")).Return(newExpectedDNSMsg(), nil),
+	)
 	clients := []dnsClient{client1, client2}
 	lbClient := newLoadBalanceDNSClient(clients, withLbPolicy(newSequentialPolicy()))
 
 	result, err := lbClient.Query(context.Background(), []byte("abc"))
 	require.NoError(t, err)
-	require.Equal(t, 1, client1.callCount)
-	require.Equal(t, 1, client2.callCount)
 	require.Equal(t, newExpectedDNSMsg(), result)
 }
 
 func TestLoadBalanceDNSClientPolicy(t *testing.T) {
-	client1 := &mockDNSClient{reqBody: []byte("abc"), t: t}
-	client2 := &mockDNSClient{reqBody: []byte("abc"), t: t}
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client1 := NewMockdnsClient(ctrl)
+	client2 := NewMockdnsClient(ctrl)
+	gomock.InOrder(
+		client1.EXPECT().Query(gomock.Any(), []byte("abc")).Return(newExpectedDNSMsg(), nil),
+		client2.EXPECT().Query(gomock.Any(), []byte("abc")).Return(newExpectedDNSMsg(), nil),
+	)
 	clients := []dnsClient{client1, client2}
 	lbClient := newLoadBalanceDNSClient(clients, withLbPolicy(newRoundRobinPolicy()))
 
 	result, err := lbClient.Query(context.Background(), []byte("abc"))
 	require.NoError(t, err)
-	require.Equal(t, 1, client1.callCount)
-	require.Equal(t, 0, client2.callCount)
 	require.Equal(t, newExpectedDNSMsg(), result)
 
 	result, err = lbClient.Query(context.Background(), []byte("abc"))
 	require.NoError(t, err)
-	require.Equal(t, 1, client1.callCount)
-	require.Equal(t, 1, client2.callCount)
 	require.Equal(t, newExpectedDNSMsg(), result)
 }
 
 func TestLoadBalanceDNSClientMaxFails(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name             string
 		maxFails         int
@@ -282,8 +290,13 @@ func TestLoadBalanceDNSClientMaxFails(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client1 := &mockDNSClient{reqBody: []byte("abc"), t: t, err: errors.New("client error")}
-			client2 := &mockDNSClient{reqBody: []byte("abc"), t: t, err: errors.New("client error")}
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			client1 := NewMockdnsClient(ctrl)
+			client2 := NewMockdnsClient(ctrl)
+			client1.EXPECT().Query(gomock.Any(), []byte("abc")).Return(newExpectedDNSMsg(), errors.New("client error")).Times(tt.callCountClient1)
+			client2.EXPECT().Query(gomock.Any(), []byte("abc")).Return(newExpectedDNSMsg(), errors.New("client error")).Times(tt.callCountClient2)
 			clients := []dnsClient{client1, client2}
 
 			lbClient := newLoadBalanceDNSClient(clients,
@@ -293,16 +306,17 @@ func TestLoadBalanceDNSClientMaxFails(t *testing.T) {
 
 			result, err := lbClient.Query(context.Background(), []byte("abc"))
 			require.Error(t, err)
-			require.Equal(t, tt.callCountClient1, client1.callCount)
-			require.Equal(t, tt.callCountClient2, client2.callCount)
 			require.Equal(t, newExpectedDNSMsg(), result)
 		})
 	}
 }
 
 func TestDefaultNewLoadBalanceDNSClient(t *testing.T) {
-	client1 := &mockDNSClient{reqBody: []byte("abc"), t: t}
-	client2 := &mockDNSClient{reqBody: []byte("abc"), t: t}
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client1 := NewMockdnsClient(ctrl)
+	client2 := NewMockdnsClient(ctrl)
 	clients := []dnsClient{client1, client2}
 
 	lbClient := newLoadBalanceDNSClient(clients)

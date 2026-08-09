@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      go_ci: ${{ steps.filter.outputs.go_ci }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            go_ci:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - '.golangci.yml'
+              - '.github/workflows/ci.yml'
+
+  go:
+    needs: changes
+    if: needs.changes.outputs.go_ci == 'true'
+    runs-on: ubuntu-latest
+    container: golang:1.26-alpine
+    env:
+      CGO_ENABLED: 0
+      GOFLAGS: -buildvcs=false
+      GOMODCACHE: /go/pkg/mod
+      GOCACHE: /root/.cache/go-build
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install system dependencies
+        shell: sh
+        run: apk add --no-cache bash ca-certificates git
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Cache Go modules and build outputs
+        uses: actions/cache@v5
+        with:
+          path: |
+            /go/pkg/mod
+            /root/.cache/go-build
+          key: ${{ runner.os }}-go-1.26-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-1.26-
+
+      - name: Verify generated files and module metadata
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          go generate ./...
+          go mod tidy
+          git diff --exit-code
+
+      - name: Check Go formatting
+        run: test -z "$(gofmt -l .)"
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12
+          args: --verbose
+
+      - name: Run Go tests
+        run: go test ./... -v -cover
+
+      - name: Run Go build
+        run: go build ./...
+
+      - name: Build CoreDNS with the local plugin
+        run: |
+          plugin_dir="$GITHUB_WORKSPACE"
+          coredns_version="$(go list -m -f '{{.Version}}' github.com/coredns/coredns)"
+          coredns_dir="$(mktemp -d)"
+
+          git clone --depth 1 --branch "$coredns_version" https://github.com/coredns/coredns.git "$coredns_dir"
+          cd "$coredns_dir"
+          go mod edit -replace "github.com/v-byte-cpu/coredns-https=$plugin_dir"
+          go get github.com/v-byte-cpu/coredns-https@v0.0.0
+          COREDNS_PLUGINS="dohproxy:github.com/v-byte-cpu/coredns-https" go generate coredns.go
+          go build -o coredns .
+          ./coredns -plugins | grep -Fx dohproxy

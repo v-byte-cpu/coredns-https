@@ -1,31 +1,71 @@
+version: "2"
+
 linters:
+  disable:
+    - errcheck
   enable:
     - dogsled
-    - errname
-    - errorlint
-    - exportloopref
+    - gochecknoinits
     - funlen
     - gocognit
     - goconst
     - gocritic
     - gocyclo
-    - gofmt
-    - goimports
+    - nolintlint
+    - paralleltest
+    - testifylint
     - staticcheck
     - gosec
-    - govet
     - misspell
     - nestif
     - prealloc
+    - revive
     - unconvert
     - unparam
+  exclusions:
+    rules:
+      # CoreDNS external plugins must register themselves during package initialization.
+      - linters:
+          - gochecknoinits
+        path: setup\.go
+        text: "don't use `init` function"
+      # Runtime configuration limits poolLen to maxUpstreams before this conversion.
+      - linters:
+          - gosec
+        path: policy\.go
+        text: "G115"
+      - linters:
+          - funlen
+          - goconst
+        path: _test\.go
+  settings:
+    revive:
+      severity: warning
+      confidence: 0.8
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: empty-block
+        - name: superfluous-else
+        - name: unhandled-error
+        - name: unused-receiver
+        - name: unreachable-code
+        - name: range-val-in-closure
+        - name: range-val-address
+        - name: waitgroup-by-value
+        - name: atomic
+        - name: early-return
+        - name: unconditional-recursion
+        - name: identical-branches
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
 
 run:
-  timeout: 5m
-
-issues:
-  exclude-rules:
-    - linters:
-        - funlen
-        - gosec
-      path: _test\.go
+  timeout: 3m

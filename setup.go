@@ -12,14 +12,17 @@ import (
 	pkgtls "github.com/coredns/coredns/plugin/pkg/tls"
 )
 
-const maxUpstreams = 15
+const (
+	pluginName   = "dohproxy"
+	maxUpstreams = 15
+)
 
-func init() { plugin.Register("https", setup) }
+func init() { plugin.Register(pluginName, setup) }
 
 func setup(c *caddy.Controller) error {
 	conf, err := parseConfig(c)
 	if err != nil {
-		return plugin.Error("https", err)
+		return plugin.Error(pluginName, err)
 	}
 
 	dnsClient := setupDNSClient(conf)
